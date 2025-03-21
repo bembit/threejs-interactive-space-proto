@@ -72,9 +72,14 @@ const commonNoiseFunctions = `
 
 // Planet shaders
 const earthLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         ${commonNoiseFunctions}
@@ -85,15 +90,24 @@ const earthLikePlanetShader = {
             vec3 waterColor = vec3(0.0, 0.3, 0.7);
             vec3 landColor = vec3(0.1, 0.7, 0.1);
             vec3 color = mix(waterColor, landColor, step(threshold, n));
+            vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const marsLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         ${commonNoiseFunctions}
@@ -104,15 +118,24 @@ const marsLikePlanetShader = {
             vec3 marsDark = vec3(0.5, 0.2, 0.1);
             vec3 marsLight = vec3(0.8, 0.4, 0.3);
             vec3 color = mix(marsDark, marsLight, step(threshold, n));
+            vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const saturnLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         const float PI = 3.14159265359;
@@ -121,15 +144,24 @@ const saturnLikePlanetShader = {
             vec3 saturnBase = vec3(0.9, 0.8, 0.6);
             vec3 saturnBand = vec3(0.8, 0.7, 0.5);
             vec3 color = mix(saturnBase, saturnBand, bands);
+						vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const icyPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         ${commonNoiseFunctions}
@@ -140,15 +172,24 @@ const icyPlanetShader = {
             vec3 iceBase = vec3(0.7, 0.8, 0.9);
             vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
             vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
+						vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const gasGiantPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         const float PI = 3.14159265359;
@@ -160,43 +201,56 @@ const gasGiantPlanetShader = {
             vec3 baseColor = vec3(0.9, 0.6, 0.4);
             vec3 stormColor = vec3(0.7, 0.4, 0.2);
             vec3 color = mix(baseColor, stormColor, swirl * n);
+						vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const sunLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
-        uniform float time;
         const float PI = 3.14159265359;
         ${commonNoiseFunctions}
-
         void main() {
             vec2 st = vUv * 15.0;
             float n = fbm(st + time * 0.5);
             float swirl = abs(sin(vUv.x * PI * 30.0 + time * 0.5));
-            
-            // Fire-like colors
-            vec3 baseColor = vec3(1.0, 0.6, 0.0);  // Orange
-            vec3 flareColor = vec3(1.0, 0.2, 0.0); // Deep Red
-            vec3 glowColor = vec3(1.0, 0.9, 0.2);  // Yellowish glow
-            
+            vec3 baseColor = vec3(1.0, 0.6, 0.0);
+            vec3 flareColor = vec3(1.0, 0.2, 0.0);
+            vec3 glowColor = vec3(1.0, 0.9, 0.2);
             vec3 color = mix(baseColor, flareColor, swirl * n);
             color = mix(color, glowColor, smoothstep(0.6, 1.0, swirl * n));
-            
+            // sun shadows?
+            vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.3 + 0.7; // Less contrast
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const volcanicPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         ${commonNoiseFunctions}
@@ -207,49 +261,24 @@ const volcanicPlanetShader = {
             vec3 baseRock = vec3(0.2, 0.2, 0.2);
             vec3 lava = vec3(0.9, 0.3, 0.1);
             vec3 color = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
-            gl_FragColor = vec4(color, 1.0);
-        }
-    `
-};
-
-const cityPlanetShader = {
-	uniforms: { time: { value: 0 } },
-	vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        void main() {
-            vUv = uv;
-            vNormal = normalize(normalMatrix * normal);
-            vec3 pos = (modelViewMatrix * vec4(position, 1.0)).xyz;
-            vViewDir = normalize(-pos);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-	fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        float noise(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-        void main() {
-            float largeScale = noise(vUv * 2.0);
-            float smallScale = noise(vUv * 20.0);
-            float intensity = largeScale * smallScale;
-            vec3 baseColor = vec3(1.0, 1.0, 0.8);
-            vec3 color = baseColor * step(0.5, intensity);
-            float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
-            color += vec3(0.1, 0.1, 0.2) * fresnel;
+						vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
 
 const gasPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+	},
 	vertexShader,
 	fragmentShader: `
+        uniform vec3 uLightDir;
+        uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
         float noise(vec2 p) {
@@ -258,6 +287,10 @@ const gasPlanetShader = {
         void main() {
             float bands = sin(vUv.y * 10.0 + noise(vUv * 5.0));
             vec3 color = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
+						vec3 lightDir = normalize(uLightDir);
+            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+            lightIntensity = lightIntensity * 0.8 + 0.2;
+            color *= lightIntensity;
             gl_FragColor = vec4(color, 1.0);
         }
     `
@@ -653,6 +686,10 @@ class Planet {
 			this.mesh.position.z = Math.sin(this.orbitalAngle) * this.orbitalRadius;
 			// Keep y = 0 for simplicity (2D orbits); adjust if you want 3D orbits
 		}
+		// Update light direction (sun at origin)
+		// const sunPosition = new THREE.Vector3(0, 0, 0);
+		// const lightDir = sunPosition.clone().sub(this.mesh.position).normalize();
+		// this.mesh.material.uniforms.uLightDir.value.copy(lightDir);
 	}
 }
 
@@ -794,7 +831,10 @@ window.addEventListener("mousedown", onMouseClick);
 // Animation loop
 function animate() {
 	requestAnimationFrame(animate);
-	planets.forEach((planet) => planet.update());
+	planets.forEach((planet) => {
+		planet.update();
+		planet.mesh.material.uniforms.time.value += 0.01; // Increment time
+	});
 	cameraController.update();
 	renderer.render(scene, camera);
 	stars.rotation.y += 0.0001;
