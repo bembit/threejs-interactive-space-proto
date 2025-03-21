@@ -154,16 +154,28 @@ const saturnLikePlanetShader = {
 };
 
 const icyPlanetShader = {
-	uniforms: {
-		time: { value: 0 },
-		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
-	},
-	vertexShader,
-	fragmentShader: `
+    uniforms: { 
+        time: { value: 0 },
+        uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+            vUv = uv;
+            vNormal = normalize(normalMatrix * normal);
+            vec3 pos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+            vViewDir = normalize(-pos);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
         uniform vec3 uLightDir;
         uniform float time;
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vViewDir;
         ${commonNoiseFunctions}
         void main() {
             vec2 st = vUv * 15.0;
@@ -172,14 +184,62 @@ const icyPlanetShader = {
             vec3 iceBase = vec3(0.7, 0.8, 0.9);
             vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
             vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
-						vec3 lightDir = normalize(uLightDir);
-            float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
-            lightIntensity = lightIntensity * 0.8 + 0.2;
+
+            // Diffuse
+            vec3 lightDir = normalize(uLightDir);
+            float diffuse = max(dot(normalize(vNormal), lightDir), 0.0);
+            float lightIntensity = diffuse * 0.8 + 0.2;
             color *= lightIntensity;
+
+            // Specular
+            vec3 viewDir = normalize(vViewDir);
+            vec3 halfVector = normalize(lightDir + viewDir);
+            float specularStrength = 0.7; // Stronger for icy surface
+            float shininess = 64.0; // Tight highlight
+            float specular = pow(max(dot(normalize(vNormal), halfVector), 0.0), shininess);
+            vec3 specularColor = vec3(1.0, 1.0, 1.0) * specularStrength * specular;
+            color += specularColor;
+
+            // Rim
+            float rimStrength = 0.4;
+            float rimPower = 2.0;
+            float rim = 1.0 - max(dot(normalize(vNormal), viewDir), 0.0);
+            rim = pow(rim, rimPower);
+            vec3 rimColor = vec3(0.8, 0.9, 1.0) * rimStrength * rim; // Cool blue rim
+            color += rimColor;
+
             gl_FragColor = vec4(color, 1.0);
         }
     `
 };
+
+// const icyPlanetShader = {
+// 	uniforms: {
+// 		time: { value: 0 },
+// 		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() } // Default light direction
+// 	},
+// 	vertexShader,
+// 	fragmentShader: `
+//         uniform vec3 uLightDir;
+//         uniform float time;
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         ${commonNoiseFunctions}
+//         void main() {
+//             vec2 st = vUv * 15.0;
+//             float n = fbm(st);
+//             float threshold = 0.45;
+//             vec3 iceBase = vec3(0.7, 0.8, 0.9);
+//             vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
+//             vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
+// 						vec3 lightDir = normalize(uLightDir);
+//             float lightIntensity = max(dot(normalize(vNormal), lightDir), 0.0);
+//             lightIntensity = lightIntensity * 0.8 + 0.2;
+//             color *= lightIntensity;
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
 
 const gasGiantPlanetShader = {
 	uniforms: {
@@ -837,7 +897,7 @@ function animate() {
 	});
 	cameraController.update();
 	renderer.render(scene, camera);
-	stars.rotation.y += 0.0001;
+	stars.rotation.y += 0.00005;
 }
 animate();
 
