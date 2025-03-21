@@ -31,6 +31,271 @@ const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1 });
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
+const vertexShader = `
+    varying vec2 vUv;
+    varying vec3 vNormal;
+
+    void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const earthLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float pnoise(vec2 p, vec2 period) {
+            vec2 i = mod(floor(p), period);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(mod(i + vec2(1.0, 0.0), period));
+            float c = hash(mod(i + vec2(0.0, 1.0), period));
+            float d = hash(mod(i + vec2(1.0, 1.0), period));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 st) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            vec2 period = vec2(10.0, 10.0);
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * pnoise(st * frequency, period);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.5;
+            vec3 waterColor = vec3(0.0, 0.3, 0.7);
+            vec3 landColor = vec3(0.1, 0.7, 0.1);
+            vec3 color = mix(waterColor, landColor, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const marsLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float pnoise(vec2 p, vec2 period) {
+            vec2 i = mod(floor(p), period);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(mod(i + vec2(1.0, 0.0), period));
+            float c = hash(mod(i + vec2(0.0, 1.0), period));
+            float d = hash(mod(i + vec2(1.0, 1.0), period));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 st) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            vec2 period = vec2(10.0, 10.0);
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * pnoise(st * frequency, period);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.4;
+            vec3 marsDark = vec3(0.5, 0.2, 0.1);
+            vec3 marsLight = vec3(0.8, 0.4, 0.3);
+            vec3 color = mix(marsDark, marsLight, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const saturnLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        const float PI = 3.14159265359;
+
+        void main() {
+            float bands = abs(sin(vUv.y * PI * 10.0));
+            vec3 saturnBase = vec3(0.9, 0.8, 0.6);
+            vec3 saturnBand = vec3(0.8, 0.7, 0.5);
+            vec3 color = mix(saturnBase, saturnBand, bands);
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const icyPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float pnoise(vec2 p, vec2 period) {
+            vec2 i = mod(floor(p), period);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(mod(i + vec2(1.0, 0.0), period));
+            float c = hash(mod(i + vec2(0.0, 1.0), period));
+            float d = hash(mod(i + vec2(1.0, 1.0), period));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 st) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            vec2 period = vec2(10.0, 10.0);
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * pnoise(st * frequency, period);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        void main() {
+            vec2 st = vUv * 15.0;
+            float n = fbm(st);
+            float threshold = 0.45;
+            vec3 iceBase = vec3(0.7, 0.8, 0.9);
+            vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
+            vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const gasGiantPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        const float PI = 3.14159265359;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float pnoise(vec2 p, vec2 period) {
+            vec2 i = mod(floor(p), period);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(mod(i + vec2(1.0, 0.0), period));
+            float c = hash(mod(i + vec2(0.0, 1.0), period));
+            float d = hash(mod(i + vec2(1.0, 1.0), period));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 st) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            vec2 period = vec2(10.0, 10.0);
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * pnoise(st * frequency, period);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        void main() {
+            vec2 st = vUv * 20.0;
+            float n = fbm(st);
+            float swirl = abs(sin(vUv.x * PI * 20.0));
+            vec3 baseColor = vec3(0.9, 0.6, 0.4);
+            vec3 stormColor = vec3(0.7, 0.4, 0.2);
+            vec3 color = mix(baseColor, stormColor, swirl * n);
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const volcanicPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float pnoise(vec2 p, vec2 period) {
+            vec2 i = mod(floor(p), period);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(mod(i + vec2(1.0, 0.0), period));
+            float c = hash(mod(i + vec2(0.0, 1.0), period));
+            float d = hash(mod(i + vec2(1.0, 1.0), period));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 st) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            vec2 period = vec2(10.0, 10.0);
+            for (int i = 0; i < 5; i++) {
+                value += amplitude * pnoise(st * frequency, period);
+                frequency *= 2.0;
+                amplitude *= 0.5;
+            }
+            return value;
+        }
+
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.55;
+            vec3 baseRock = vec3(0.2, 0.2, 0.2);
+            vec3 lava = vec3(0.9, 0.3, 0.1);
+            vec3 color = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
 // Planet shaders (unchanged)
 const cityPlanetShader = {
 	uniforms: { time: { value: 0 } },
@@ -86,49 +351,6 @@ const gasPlanetShader = {
         void main() {
             float bands = sin(vUv.y * 10.0 + noise(vUv * 5.0));
             vec3 color = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
-            gl_FragColor = vec4(color, 1.0);
-        }
-    `
-};
-
-const earthLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
-	vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        void main() {
-            vUv = uv;
-            vNormal = normalize(normalMatrix * normal);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-	fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-
-        float noise(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-
-        float fbm(vec2 p) {
-            float v = 0.0;
-            float a = 0.5;
-            vec2 shift = vec2(100.0);
-            for (int i = 0; i < 6; ++i) {
-                v += a * noise(p);
-                p = p * 2.0 + shift;
-                a *= 0.5;
-            }
-            return v;
-        }
-
-        void main() {
-            vec2 st = vUv * 10.0;
-            float n = fbm(st);
-            float threshold = 0.5;
-            vec3 waterColor = vec3(0.0, 0.3, 0.7);
-            vec3 landColor = vec3(0.1, 0.7, 0.1);
-            vec3 color = mix(waterColor, landColor, step(threshold, n));
             gl_FragColor = vec4(color, 1.0);
         }
     `
@@ -255,25 +477,6 @@ class CameraController {
 		}
 	}
 
-	// animateCamera() {
-	// 	const step = 0.02;
-	// 	if (this.targetPosition) {
-	// 		this.camera.position.lerp(this.targetPosition, step);
-	// 		if (this.camera.position.distanceTo(this.targetPosition) < 0.1) {
-	// 			this.camera.position.copy(this.targetPosition);
-	// 			this.targetPosition = null;
-	// 		}
-	// 	}
-	// 	if (this.targetQuaternion) {
-	// 		this.camera.quaternion.slerp(this.targetQuaternion, step);
-	// 		// Check if the rotation is close enough:
-	// 		if (this.camera.quaternion.angleTo(this.targetQuaternion) < 0.01) {
-	// 			this.camera.quaternion.copy(this.targetQuaternion);
-	// 			this.targetQuaternion = null;
-	// 		}
-	// 	}
-	// }
-
 	animateCamera() {
 		// Use separate step values for position and rotation if needed.
 		const positionStep = 0.02; // You might try increasing this to 0.03-0.05 for a snappier finish.
@@ -339,7 +542,14 @@ class CameraController {
 
 // Planet class with updated zoom functions
 class Planet {
-	constructor(radius, centerPosition, numPoints, shader) {
+	constructor(
+		radius,
+		centerPosition,
+		numPoints,
+		shader,
+		rotationSpeed = 0.001,
+		rotationAxis = new THREE.Vector3(0, 1, 0)
+	) {
 		this.radius = radius;
 		this.mesh = new THREE.Mesh(
 			new THREE.SphereGeometry(radius, 64, 64),
@@ -351,6 +561,15 @@ class Planet {
 		);
 		this.mesh.position.copy(centerPosition);
 		this.points = [];
+		// this.rotationSpeed = rotationSpeed; // Speed of rotation (radians per frame)
+		// this.rotationAxis = rotationAxis.normalize(); // Axis of rotation (default Y-axis)
+
+		this.rotationSpeed = Math.random() * 0.002 + 0.0005; // Random between 0.0005 and 0.0025
+		this.rotationAxis = new THREE.Vector3(
+			Math.random() * 0.4 - 0.2, // Slight X tilt
+			1, // Dominant Y
+			Math.random() * 0.4 - 0.2 // Slight Z tilt
+		).normalize();
 
 		for (let i = 0; i < numPoints; i++) {
 			const theta = Math.random() * Math.PI * 2;
@@ -380,21 +599,6 @@ class Planet {
 		return this.points;
 	}
 
-	// Before zooming, store the current camera position as the "origin"
-	// zoomToPoint(point, controller) {
-	// 	// Before zooming in, save the current state.
-	// 	controller.previousPosition = controller.camera.position.clone();
-	// 	controller.originalQuaternion = controller.camera.quaternion.clone();
-	// 	// Zoom in by setting the target position (using the point’s position)
-	// 	controller.targetPosition = point.position.clone();
-	// 	// Optionally, set a targetQuaternion that makes the camera look at the point.
-	// 	// For example, you can compute a quaternion from lookAt:
-	// 	const tempCam = new THREE.PerspectiveCamera();
-	// 	tempCam.position.copy(controller.camera.position);
-	// 	tempCam.lookAt(point.position);
-	// 	controller.targetQuaternion = tempCam.quaternion.clone();
-	// }
-
 	zoomToPoint(point, controller) {
 		const minDistance = 3; // Adjust this value as needed
 		controller.previousPosition = controller.camera.position.clone();
@@ -421,38 +625,110 @@ class Planet {
 		// On zoom out, reset the camera back to its stored state.
 		controller.resetZoom();
 	}
+
+	// New method to update rotation
+	update() {
+		// Rotate the mesh around its specified axis
+		this.mesh.rotateOnAxis(this.rotationAxis, this.rotationSpeed);
+
+		// Update point markers to follow the planet's rotation
+		this.points.forEach((point) => {
+			// Transform the point's local position relative to the planet's center
+			const localPos = point.position.clone().sub(this.mesh.position);
+			localPos.applyAxisAngle(this.rotationAxis, this.rotationSpeed);
+			point.marker.position.copy(this.mesh.position).add(localPos);
+		});
+	}
 }
 
 // Create camera controller
 const cameraController = new CameraController(camera);
 
-// Create three planets
+// create planets
 const cityPlanet = new Planet(
 	10,
 	new THREE.Vector3(0, 0, 0),
 	5,
-	cityPlanetShader
+	cityPlanetShader,
+	0.001,
+	new THREE.Vector3(0, 1, 0)
 );
 const gasPlanet = new Planet(
 	8,
-	new THREE.Vector3(25, 0, 0),
+	new THREE.Vector3(25, 15, 0),
 	3,
-	gasPlanetShader
+	gasPlanetShader,
+	0.002,
+	new THREE.Vector3(0, 1, 0)
 );
-const testPlanet = new Planet(
+const earthPlanet = new Planet(
+	10,
+	new THREE.Vector3(-30, -20, 0),
+	5,
+	earthLikePlanetShader,
+	0.0015,
+	new THREE.Vector3(0, 1, 0.1)
+);
+const marsPlanet = new Planet(
+	8,
+	new THREE.Vector3(-15, 20, 0),
+	4,
+	marsLikePlanetShader,
+	0.0008,
+	new THREE.Vector3(0.1, 1, 0)
+);
+const saturnPlanet = new Planet(
+	12,
+	new THREE.Vector3(40, 0, 0),
 	6,
-	new THREE.Vector3(25, 44, 33),
-	9,
-	earthLikePlanetShader
+	saturnLikePlanetShader,
+	0.0012,
+	new THREE.Vector3(0, 1, 0)
 );
+const icyPlanet = new Planet(
+	7,
+	new THREE.Vector3(55, -15, -15),
+	3,
+	icyPlanetShader,
+	0.0025,
+	new THREE.Vector3(0, 1, -0.1)
+);
+const gasGiantPlanet = new Planet(
+	15,
+	new THREE.Vector3(70, 0, 35),
+	7,
+	gasGiantPlanetShader,
+	0.001,
+	new THREE.Vector3(0.2, 1, 0)
+);
+const volcanicPlanet = new Planet(
+	9,
+	new THREE.Vector3(85, 15, 15),
+	4,
+	volcanicPlanetShader,
+	0.0018,
+	new THREE.Vector3(0, 1, 0.2)
+);
+
 cityPlanet.addToScene(scene);
 gasPlanet.addToScene(scene);
-testPlanet.addToScene(scene);
+earthPlanet.addToScene(scene);
+marsPlanet.addToScene(scene);
+saturnPlanet.addToScene(scene);
+icyPlanet.addToScene(scene);
+gasGiantPlanet.addToScene(scene);
+volcanicPlanet.addToScene(scene);
 
+// Update allPoints
 const allPoints = [
 	...cityPlanet.getPoints(),
 	...gasPlanet.getPoints(),
-	...testPlanet.getPoints()
+	...earthPlanet.getPoints(),
+	...marsPlanet.getPoints(),
+	...saturnPlanet.getPoints(),
+	...icyPlanet.getPoints(),
+	...gasGiantPlanet.getPoints(),
+	...volcanicPlanet.getPoints()
 ];
 
 // Raycasting setup
@@ -513,9 +789,24 @@ function onKeyDown(event) {
 window.addEventListener("mousedown", onMouseClick);
 window.addEventListener("keydown", onKeyDown);
 
+// Temporary
+const planets = [
+	cityPlanet,
+	gasPlanet,
+	earthPlanet,
+	marsPlanet,
+	saturnPlanet,
+	icyPlanet,
+	gasGiantPlanet,
+	volcanicPlanet
+];
+
 // Animation loop
 function animate() {
 	requestAnimationFrame(animate);
+
+	planets.forEach((planet) => planet.update());
+
 	cameraController.update();
 	renderer.render(scene, camera);
 	stars.rotation.y += 0.0001;

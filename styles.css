@@ -19,3 +19,16 @@ canvas {
 	display: none; /* Hidden by default */
 	z-index: 100;
 }
+
+#planet-info {
+	position: absolute;
+	top: 20px;
+	left: 20px;
+	background: rgba(0, 0, 0, 0.8);
+	color: white;
+	padding: 10px;
+	border-radius: 5px;
+	display: none;
+	font-family: Arial, sans-serif;
+	z-index: 100;
+}
