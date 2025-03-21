@@ -12,6 +12,8 @@ const initialPosition = new THREE.Vector3(0, 0, 50);
 camera.position.copy(initialPosition);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+// renderer.shadowMap.enabled = true;
+// renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Optional: softer shadows
 document.body.appendChild(renderer.domElement);
 
 // Starfield
@@ -31,13 +33,14 @@ const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1 });
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
-// Common shader components
 const vertexShader = `
     varying vec2 vUv;
     varying vec3 vNormal;
+    varying vec3 vPosition; // Pass world position for lighting and shadows
     void main() {
         vUv = uv;
         vNormal = normalize(normalMatrix * normal);
+        vPosition = (modelMatrix * vec4(position, 1.0)).xyz; // World position
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
 `;
@@ -70,131 +73,198 @@ const commonNoiseFunctions = `
     }
 `;
 
-// Planet shaders
+const commonLightingAndShadows = `
+    ${THREE.ShaderChunk.lights_pars_begin}
+    ${THREE.ShaderChunk.shadowmap_pars_fragment}
+
+    vec3 applyLightingAndShadows(vec3 baseColor, vec3 normal, vec3 position) {
+        vec3 lightDir = normalize(position - pointLights[0].position);
+        float diffuse = max(dot(normal, -lightDir), 0.0);
+        float lightIntensity = pointLights[0].intensity / pow(length(position - pointLights[0].position), 2.0);
+        vec3 diffuseColor = baseColor * diffuse * lightIntensity;
+
+        float shadow = 1.0; // Default to fully lit
+        #ifdef USE_SHADOWMAP
+            vec4 shadowCoord = shadowProjectionMatrix[0] * shadowModelViewMatrix[0] * vec4(position, 1.0);
+            shadow = unpackRGBAToDepth(texture2D(shadowMap[0], shadowCoord.xy));
+            shadow = shadowCoord.z > shadow ? 0.0 : 1.0; // Basic shadow test
+        #endif
+        return diffuseColor * (0.2 + 0.8 * shadow); // Ambient + shadowed diffuse
+    }
+`;
+
 const earthLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
         ${commonNoiseFunctions}
+        ${commonLightingAndShadows}
         void main() {
             vec2 st = vUv * 10.0;
             float n = fbm(st);
             float threshold = 0.5;
             vec3 waterColor = vec3(0.0, 0.3, 0.7);
             vec3 landColor = vec3(0.1, 0.7, 0.1);
-            vec3 color = mix(waterColor, landColor, step(threshold, n));
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(waterColor, landColor, step(threshold, n));
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const marsLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
         ${commonNoiseFunctions}
+        ${commonLightingAndShadows}
         void main() {
             vec2 st = vUv * 10.0;
             float n = fbm(st);
             float threshold = 0.4;
             vec3 marsDark = vec3(0.5, 0.2, 0.1);
             vec3 marsLight = vec3(0.8, 0.4, 0.3);
-            vec3 color = mix(marsDark, marsLight, step(threshold, n));
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(marsDark, marsLight, step(threshold, n));
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const saturnLikePlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
+        ${commonLightingAndShadows}
         const float PI = 3.14159265359;
         void main() {
             float bands = abs(sin(vUv.y * PI * 10.0));
             vec3 saturnBase = vec3(0.9, 0.8, 0.6);
             vec3 saturnBand = vec3(0.8, 0.7, 0.5);
-            vec3 color = mix(saturnBase, saturnBand, bands);
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(saturnBase, saturnBand, bands);
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const icyPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
         ${commonNoiseFunctions}
+        ${commonLightingAndShadows}
         void main() {
             vec2 st = vUv * 15.0;
             float n = fbm(st);
             float threshold = 0.45;
             vec3 iceBase = vec3(0.7, 0.8, 0.9);
             vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
-            vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(iceBase, iceHighlight, step(threshold, n));
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const gasGiantPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
-        const float PI = 3.14159265359;
+        varying vec3 vPosition;
         ${commonNoiseFunctions}
+        ${commonLightingAndShadows}
+        const float PI = 3.14159265359;
         void main() {
             vec2 st = vUv * 20.0;
             float n = fbm(st);
             float swirl = abs(sin(vUv.x * PI * 20.0));
             vec3 baseColor = vec3(0.9, 0.6, 0.4);
             vec3 stormColor = vec3(0.7, 0.4, 0.2);
-            vec3 color = mix(baseColor, stormColor, swirl * n);
-            gl_FragColor = vec4(color, 1.0);
+            vec3 color = mix(baseColor, stormColor, swirl * n); // Fixed typo: 'swirl n' -> 'swirl * n'
+            vec3 finalColor = applyLightingAndShadows(color, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const volcanicPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
         ${commonNoiseFunctions}
+        ${commonLightingAndShadows}
         void main() {
             vec2 st = vUv * 10.0;
             float n = fbm(st);
             float threshold = 0.55;
             vec3 baseRock = vec3(0.2, 0.2, 0.2);
             vec3 lava = vec3(0.9, 0.3, 0.1);
-            vec3 color = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const cityPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
+        varying vec3 vPosition;
         void main() {
             vUv = uv;
             vNormal = normalize(normalMatrix * normal);
             vec3 pos = (modelViewMatrix * vec4(position, 1.0)).xyz;
             vViewDir = normalize(-pos);
+            vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
     `,
@@ -202,6 +272,8 @@ const cityPlanetShader = {
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
+        varying vec3 vPosition;
+        ${commonLightingAndShadows}
         float noise(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
@@ -213,27 +285,282 @@ const cityPlanetShader = {
             vec3 color = baseColor * step(0.5, intensity);
             float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
             color += vec3(0.1, 0.1, 0.2) * fresnel;
-            gl_FragColor = vec4(color, 1.0);
+            vec3 finalColor = applyLightingAndShadows(color, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
 
 const gasPlanetShader = {
-	uniforms: { time: { value: 0 } },
+	uniforms: {
+		time: { value: 0 },
+		...THREE.UniformsLib.lights,
+		...THREE.UniformsLib.shadowmap
+	},
 	vertexShader,
 	fragmentShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        varying vec3 vPosition;
+        ${commonLightingAndShadows}
         float noise(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
         void main() {
             float bands = sin(vUv.y * 10.0 + noise(vUv * 5.0));
-            vec3 color = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
-            gl_FragColor = vec4(color, 1.0);
+            vec3 baseColor = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
+            vec3 finalColor = applyLightingAndShadows(baseColor, normalize(vNormal), vPosition);
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `
 };
+
+// // Common shader components
+// const vertexShader = `
+//     varying vec2 vUv;
+//     varying vec3 vNormal;
+//     void main() {
+//         vUv = uv;
+//         vNormal = normalize(normalMatrix * normal);
+//         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+//     }
+// `;
+
+// const commonNoiseFunctions = `
+//     float hash(vec2 p) {
+//         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+//     }
+//     float pnoise(vec2 p, vec2 period) {
+//         vec2 i = mod(floor(p), period);
+//         vec2 f = fract(p);
+//         float a = hash(i);
+//         float b = hash(mod(i + vec2(1.0, 0.0), period));
+//         float c = hash(mod(i + vec2(0.0, 1.0), period));
+//         float d = hash(mod(i + vec2(1.0, 1.0), period));
+//         vec2 u = f * f * (3.0 - 2.0 * f);
+//         return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+//     }
+//     float fbm(vec2 st) {
+//         float value = 0.0;
+//         float amplitude = 0.5;
+//         float frequency = 1.0;
+//         vec2 period = vec2(10.0, 10.0);
+//         for (int i = 0; i < 5; i++) {
+//             value += amplitude * pnoise(st * frequency, period);
+//             frequency *= 2.0;
+//             amplitude *= 0.5;
+//         }
+//         return value;
+//     }
+// `;
+
+// // Planet shaders
+// const earthLikePlanetShader = {
+// 	uniforms: {
+// 		time: { value: 0 },
+// 		// Add light-related uniforms (automatically provided by Three.js)
+// 		...THREE.UniformsLib.lights,
+// 		...THREE.UniformsLib.shadowmap
+// 	},
+// 	vertexShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         varying vec3 vPosition; // Pass world position to fragment shader
+
+//         void main() {
+//             vUv = uv;
+//             vNormal = normalize(normalMatrix * normal);
+//             vPosition = (modelMatrix * vec4(position, 1.0)).xyz; // World position
+//             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+//         }
+//     `,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         varying vec3 vPosition;
+
+//         ${commonNoiseFunctions} // Your noise functions
+
+//         // Include Three.js shadow and light utilities
+//         ${THREE.ShaderChunk.lights_pars_begin}
+//         ${THREE.ShaderChunk.shadowmap_pars_fragment}
+
+//         void main() {
+//             vec2 st = vUv * 10.0;
+//             float n = fbm(st);
+//             float threshold = 0.5;
+//             vec3 waterColor = vec3(0.0, 0.3, 0.7);
+//             vec3 landColor = vec3(0.1, 0.7, 0.1);
+//             vec3 baseColor = mix(waterColor, landColor, step(threshold, n));
+
+//             // Calculate lighting
+//             vec3 normal = normalize(vNormal);
+//             vec3 lightDir = normalize(vPosition - pointLights[0].position); // Direction to PointLight
+//             float diffuse = max(dot(normal, -lightDir), 0.0);
+//             float lightIntensity = pointLights[0].intensity / pow(length(vPosition - pointLights[0].position), 2.0); // Simple attenuation
+//             vec3 diffuseColor = baseColor * diffuse * lightIntensity;
+
+//             // Apply shadow
+//             float shadow = 0.0;
+//             #ifdef USE_SHADOWMAP
+//                 shadow = getShadow(
+//                     shadowMap[0],           // Shadow map from PointLight
+//                     vPosition,              // World position
+//                     normal,                 // Surface normal
+//                     pointLights[0].position // Light position
+//                 );
+//             #endif
+//             vec3 finalColor = diffuseColor * (0.2 + 0.8 * shadow); // Ambient + shadowed diffuse
+
+//             gl_FragColor = vec4(finalColor, 1.0);
+//         }
+//     `
+// };
+
+// const marsLikePlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         ${commonNoiseFunctions}
+//         void main() {
+//             vec2 st = vUv * 10.0;
+//             float n = fbm(st);
+//             float threshold = 0.4;
+//             vec3 marsDark = vec3(0.5, 0.2, 0.1);
+//             vec3 marsLight = vec3(0.8, 0.4, 0.3);
+//             vec3 color = mix(marsDark, marsLight, step(threshold, n));
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const saturnLikePlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         const float PI = 3.14159265359;
+//         void main() {
+//             float bands = abs(sin(vUv.y * PI * 10.0));
+//             vec3 saturnBase = vec3(0.9, 0.8, 0.6);
+//             vec3 saturnBand = vec3(0.8, 0.7, 0.5);
+//             vec3 color = mix(saturnBase, saturnBand, bands);
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const icyPlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         ${commonNoiseFunctions}
+//         void main() {
+//             vec2 st = vUv * 15.0;
+//             float n = fbm(st);
+//             float threshold = 0.45;
+//             vec3 iceBase = vec3(0.7, 0.8, 0.9);
+//             vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
+//             vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const gasGiantPlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         const float PI = 3.14159265359;
+//         ${commonNoiseFunctions}
+//         void main() {
+//             vec2 st = vUv * 20.0;
+//             float n = fbm(st);
+//             float swirl = abs(sin(vUv.x * PI * 20.0));
+//             vec3 baseColor = vec3(0.9, 0.6, 0.4);
+//             vec3 stormColor = vec3(0.7, 0.4, 0.2);
+//             vec3 color = mix(baseColor, stormColor, swirl * n);
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const volcanicPlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         ${commonNoiseFunctions}
+//         void main() {
+//             vec2 st = vUv * 10.0;
+//             float n = fbm(st);
+//             float threshold = 0.55;
+//             vec3 baseRock = vec3(0.2, 0.2, 0.2);
+//             vec3 lava = vec3(0.9, 0.3, 0.1);
+//             vec3 color = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const cityPlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         varying vec3 vViewDir;
+//         void main() {
+//             vUv = uv;
+//             vNormal = normalize(normalMatrix * normal);
+//             vec3 pos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+//             vViewDir = normalize(-pos);
+//             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+//         }
+//     `,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         varying vec3 vViewDir;
+//         float noise(vec2 p) {
+//             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+//         }
+//         void main() {
+//             float largeScale = noise(vUv * 2.0);
+//             float smallScale = noise(vUv * 20.0);
+//             float intensity = largeScale * smallScale;
+//             vec3 baseColor = vec3(1.0, 1.0, 0.8);
+//             vec3 color = baseColor * step(0.5, intensity);
+//             float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
+//             color += vec3(0.1, 0.1, 0.2) * fresnel;
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
+
+// const gasPlanetShader = {
+// 	uniforms: { time: { value: 0 } },
+// 	vertexShader,
+// 	fragmentShader: `
+//         varying vec2 vUv;
+//         varying vec3 vNormal;
+//         float noise(vec2 p) {
+//             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+//         }
+//         void main() {
+//             float bands = sin(vUv.y * 10.0 + noise(vUv * 5.0));
+//             vec3 color = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
+//             gl_FragColor = vec4(color, 1.0);
+//         }
+//     `
+// };
 
 // since we store the prev position, we could store them all in an array and we could jump back and forward infinitely
 // CameraController
@@ -473,12 +800,22 @@ class Planet {
 		orbitalSpeed = 0 // New: Speed of orbit around the sun
 	) {
 		this.radius = radius;
+		// this.mesh = new THREE.Mesh(
+		// 	new THREE.SphereGeometry(radius, 64, 64),
+		// 	new THREE.ShaderMaterial({
+		// 		uniforms: shader.uniforms,
+		// 		vertexShader: shader.vertexShader,
+		// 		fragmentShader: shader.fragmentShader
+		// 	})
+		// );
 		this.mesh = new THREE.Mesh(
 			new THREE.SphereGeometry(radius, 64, 64),
 			new THREE.ShaderMaterial({
 				uniforms: shader.uniforms,
 				vertexShader: shader.vertexShader,
-				fragmentShader: shader.fragmentShader
+				fragmentShader: shader.fragmentShader,
+				lights: true, // Enable lighting support
+				extensions: { derivatives: true } // Required for some shadow calculations
 			})
 		);
 		this.mesh.position.copy(centerPosition);
@@ -493,6 +830,9 @@ class Planet {
 		this.orbitalRadius = orbitalRadius; // Distance from sun
 		this.orbitalSpeed = orbitalSpeed; // Angular speed in radians per frame
 		this.orbitalAngle = Math.random() * Math.PI * 2; // Random starting angle
+
+		this.mesh.castShadow = true;
+		this.mesh.receiveShadow = true;
 
 		// Generate POIs and attach as children
 		for (let i = 0; i < numPoints; i++) {
@@ -647,16 +987,29 @@ const cameraController = new CameraController(camera);
 
 const planets = [
 	// Sun (no orbit, at center)
-	new Planet(
-		15, // Larger radius for sun
-		new THREE.Vector3(0, 0, 0), // Center of system
-		0, // No POIs for simplicity (or add if desired)
-		gasGiantPlanetShader, // Bright, sun-like shader
-		0.001,
-		new THREE.Vector3(0, 1, 0),
-		0, // Orbital radius = 0 (stationary)
-		0 // Orbital speed = 0
-	),
+	(function () {
+		const sunPlanet = new Planet(
+			15, // Larger radius for sun
+			new THREE.Vector3(0, 0, 0), // Center of system
+			0, // No POIs for simplicity
+			gasGiantPlanetShader, // Bright, sun-like shader
+			0.001,
+			new THREE.Vector3(0, 1, 0),
+			0, // Orbital radius = 0 (stationary)
+			0 // Orbital speed = 0
+		);
+		const sunLight = new THREE.PointLight(0xffffff, 3, 2000); // Color, intensity, distance
+		sunLight.position.set(0, 0, 0); // Position at sun's center
+		sunLight.castShadow = true;
+		sunLight.shadow.mapSize.width = 1024; // Shadow map quality
+		sunLight.shadow.mapSize.height = 1024;
+		sunLight.shadow.camera.near = 0.1;
+		sunLight.shadow.camera.far = 400; // Match distance
+		sunPlanet.mesh.add(sunLight); // Attach light to sun's mesh
+		sunPlanet.mesh.castShadow = true; // Sun casts shadows
+		sunPlanet.mesh.receiveShadow = true; // Sun receives shadows (optional)
+		return sunPlanet;
+	})(),
 	// Orbiting planets
 	new Planet(
 		8,
