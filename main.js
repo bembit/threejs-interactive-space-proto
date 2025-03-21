@@ -8,12 +8,10 @@ const camera = new THREE.PerspectiveCamera(
 	0.1,
 	10000
 );
-const initialPosition = new THREE.Vector3(0, 0, 50);
+const initialPosition = new THREE.Vector3(0, 15, 150);
 camera.position.copy(initialPosition);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Starfield
@@ -33,7 +31,240 @@ const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1 });
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
-// CameraController (unchanged)
+// Common shader components
+const vertexShader = `
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const commonNoiseFunctions = `
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+    float pnoise(vec2 p, vec2 period) {
+        vec2 i = mod(floor(p), period);
+        vec2 f = fract(p);
+        float a = hash(i);
+        float b = hash(mod(i + vec2(1.0, 0.0), period));
+        float c = hash(mod(i + vec2(0.0, 1.0), period));
+        float d = hash(mod(i + vec2(1.0, 1.0), period));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+    }
+    float fbm(vec2 st) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        float frequency = 1.0;
+        vec2 period = vec2(10.0, 10.0);
+        for (int i = 0; i < 5; i++) {
+            value += amplitude * pnoise(st * frequency, period);
+            frequency *= 2.0;
+            amplitude *= 0.5;
+        }
+        return value;
+    }
+`;
+
+// Planet shaders
+const earthLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        ${commonNoiseFunctions}
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.5;
+            vec3 waterColor = vec3(0.0, 0.3, 0.7);
+            vec3 landColor = vec3(0.1, 0.7, 0.1);
+            vec3 color = mix(waterColor, landColor, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const marsLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        ${commonNoiseFunctions}
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.4;
+            vec3 marsDark = vec3(0.5, 0.2, 0.1);
+            vec3 marsLight = vec3(0.8, 0.4, 0.3);
+            vec3 color = mix(marsDark, marsLight, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const saturnLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        const float PI = 3.14159265359;
+        void main() {
+            float bands = abs(sin(vUv.y * PI * 10.0));
+            vec3 saturnBase = vec3(0.9, 0.8, 0.6);
+            vec3 saturnBand = vec3(0.8, 0.7, 0.5);
+            vec3 color = mix(saturnBase, saturnBand, bands);
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const icyPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        ${commonNoiseFunctions}
+        void main() {
+            vec2 st = vUv * 15.0;
+            float n = fbm(st);
+            float threshold = 0.45;
+            vec3 iceBase = vec3(0.7, 0.8, 0.9);
+            vec3 iceHighlight = vec3(0.9, 0.9, 1.0);
+            vec3 color = mix(iceBase, iceHighlight, step(threshold, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const gasGiantPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        const float PI = 3.14159265359;
+        ${commonNoiseFunctions}
+        void main() {
+            vec2 st = vUv * 20.0;
+            float n = fbm(st);
+            float swirl = abs(sin(vUv.x * PI * 20.0));
+            vec3 baseColor = vec3(0.9, 0.6, 0.4);
+            vec3 stormColor = vec3(0.7, 0.4, 0.2);
+            vec3 color = mix(baseColor, stormColor, swirl * n);
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const sunLikePlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        uniform float time;
+        const float PI = 3.14159265359;
+        ${commonNoiseFunctions}
+
+        void main() {
+            vec2 st = vUv * 15.0;
+            float n = fbm(st + time * 0.5);
+            float swirl = abs(sin(vUv.x * PI * 30.0 + time * 0.5));
+            
+            // Fire-like colors
+            vec3 baseColor = vec3(1.0, 0.6, 0.0);  // Orange
+            vec3 flareColor = vec3(1.0, 0.2, 0.0); // Deep Red
+            vec3 glowColor = vec3(1.0, 0.9, 0.2);  // Yellowish glow
+            
+            vec3 color = mix(baseColor, flareColor, swirl * n);
+            color = mix(color, glowColor, smoothstep(0.6, 1.0, swirl * n));
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const volcanicPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        ${commonNoiseFunctions}
+        void main() {
+            vec2 st = vUv * 10.0;
+            float n = fbm(st);
+            float threshold = 0.55;
+            vec3 baseRock = vec3(0.2, 0.2, 0.2);
+            vec3 lava = vec3(0.9, 0.3, 0.1);
+            vec3 color = mix(baseRock, lava, smoothstep(threshold - 0.1, threshold + 0.1, n));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const cityPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+            vUv = uv;
+            vNormal = normalize(normalMatrix * normal);
+            vec3 pos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+            vViewDir = normalize(-pos);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        float noise(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        void main() {
+            float largeScale = noise(vUv * 2.0);
+            float smallScale = noise(vUv * 20.0);
+            float intensity = largeScale * smallScale;
+            vec3 baseColor = vec3(1.0, 1.0, 0.8);
+            vec3 color = baseColor * step(0.5, intensity);
+            float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
+            color += vec3(0.1, 0.1, 0.2) * fresnel;
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+const gasPlanetShader = {
+	uniforms: { time: { value: 0 } },
+	vertexShader,
+	fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        float noise(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        void main() {
+            float bands = sin(vUv.y * 10.0 + noise(vUv * 5.0));
+            vec3 color = mix(vec3(0.8, 0.4, 0.2), vec3(0.6, 0.2, 0.1), smoothstep(0.4, 0.6, bands));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `
+};
+
+// since we store the prev position, we could store them all in an array and we could jump back and forward infinitely
+// CameraController
 class CameraController {
 	constructor(camera) {
 		this.camera = camera;
@@ -44,10 +275,12 @@ class CameraController {
 		this.velocity = new THREE.Vector3();
 		this.targetPosition = null;
 		this.targetQuaternion = null;
-		this.targetPoint = null;
+		this.targetPoint = null; // Track the POI to follow
 		this.previousPosition = camera.position.clone();
 		this.originalQuaternion = camera.quaternion.clone();
 		this.zoomMessage = document.getElementById("zoomMessage");
+
+		this.targetOrbitalSpeed = 0; // init speed target
 
 		renderer.domElement.addEventListener("contextmenu", (e) =>
 			e.preventDefault()
@@ -90,7 +323,7 @@ class CameraController {
 	}
 
 	onWheel(event) {
-		if (this.targetPosition || this.targetQuaternion || this.targetPoint) return;
+		if (this.targetPosition || this.targetQuaternion || this.targetPoint) return; // Lock during animations or tracking
 		const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
 			this.camera.quaternion
 		);
@@ -157,6 +390,7 @@ class CameraController {
 
 		if (this.targetPosition || this.targetQuaternion) {
 			this.zoomMessage.style.display = "block";
+
 			if (this.targetPosition) {
 				this.camera.position.lerp(this.targetPosition, positionStep);
 				if (this.camera.position.distanceTo(this.targetPosition) < 0.05) {
@@ -171,6 +405,7 @@ class CameraController {
 					this.targetQuaternion = null;
 				}
 			}
+
 			if (!this.targetPosition && !this.targetQuaternion) {
 				this.zoomMessage.style.display = this.targetPoint ? "block" : "none";
 			}
@@ -186,11 +421,19 @@ class CameraController {
 			);
 			const planetCenter = this.targetPoint.marker.parent.position;
 			const normal = worldPosition.clone().sub(planetCenter).normalize();
+
 			const distanceAbove = 5;
 			const targetPosition = worldPosition
 				.clone()
 				.add(normal.multiplyScalar(distanceAbove));
-			this.camera.position.lerp(targetPosition, 0.01);
+
+			// Dynamic lerp factor based on orbital speed
+			const baseLerpFactor = 0.01;
+			const speedAdjustedLerp = Math.min(
+				1.0,
+				baseLerpFactor + this.targetOrbitalSpeed * 100 // Scale factor, adjust as needed
+			);
+			this.camera.position.lerp(targetPosition, speedAdjustedLerp);
 			this.camera.lookAt(worldPosition);
 			this.zoomMessage.style.display = "block";
 		} else {
@@ -209,35 +452,108 @@ class CameraController {
 		}
 	}
 
+	// Skip first animation version
+	// 	update() {
+	// 		if (this.targetPosition || this.targetQuaternion) {
+	// 			this.animateCamera();
+	// 		} else if (this.targetPoint) {
+	// 			const worldPosition = this.targetPoint.marker.getWorldPosition(
+	// 				new THREE.Vector3()
+	// 			);
+	// 			const planetCenter = this.targetPoint.marker.parent.position;
+	// 			const normal = worldPosition.clone().sub(planetCenter).normalize();
+
+	// 			const distanceAbove = 5;
+	// 			const targetPosition = worldPosition
+	// 				.clone()
+	// 				.add(normal.multiplyScalar(distanceAbove));
+	// 			this.camera.position.lerp(targetPosition, 0.01); // Adjust this for speed (was 0.05)
+	// 			this.camera.lookAt(worldPosition);
+	// 			this.zoomMessage.style.display = "block";
+	// 		} else {
+	// 			const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			this.camera.position.add(forward.multiplyScalar(this.velocity.z));
+	// 			this.camera.position.add(right.multiplyScalar(this.velocity.x));
+	// 			this.camera.position.add(
+	// 				new THREE.Vector3(0, 1, 0).multiplyScalar(this.velocity.y)
+	// 			);
+	// 			this.zoomMessage.style.display = "none";
+	// 		}
+	// 	}
+
+	// 	update() {
+	// 		if (this.targetPosition || this.targetQuaternion) {
+	// 			this.animateCamera();
+	// 		} else if (this.targetPoint) {
+	// 			// Follow the POI from a top-down view
+	// 			const worldPosition = this.targetPoint.marker.getWorldPosition(
+	// 				new THREE.Vector3()
+	// 			);
+	// 			const planetCenter = this.targetPoint.marker.parent.position; // Planet's center
+	// 			const normal = worldPosition.clone().sub(planetCenter).normalize(); // Surface normal
+
+	// 			// Position camera above the POI along the normal
+	// 			const distanceAbove = 5; // Adjust this for height above the surface
+	// 			const targetPosition = worldPosition
+	// 				.clone()
+	// 				.add(normal.multiplyScalar(distanceAbove));
+	// 			this.camera.position.lerp(targetPosition, 0.05); // Smoothly follow
+	// 			this.camera.lookAt(worldPosition); // Look down at the POI
+	// 			this.zoomMessage.style.display = "block";
+	// 		} else {
+	// 			const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			this.camera.position.add(forward.multiplyScalar(this.velocity.z));
+	// 			this.camera.position.add(right.multiplyScalar(this.velocity.x));
+	// 			this.camera.position.add(
+	// 				new THREE.Vector3(0, 1, 0).multiplyScalar(this.velocity.y)
+	// 			);
+	// 			this.zoomMessage.style.display = "none";
+	// 		}
+	// 	}
+
 	resetZoom() {
 		if (this.previousPosition && this.originalQuaternion) {
 			this.targetPosition = this.previousPosition.clone();
 			this.targetQuaternion = this.originalQuaternion.clone();
 			this.targetPoint = null;
+
+			this.targetOrbitalSpeed = 0; // Reset speed
 		}
 	}
 }
 
-// Planet class
+// Planet class (unchanged)
 class Planet {
 	constructor(
 		radius,
 		centerPosition,
 		numPoints,
-		color,
+		shader,
 		rotationSpeed = 0.001,
 		rotationAxis = new THREE.Vector3(0, 1, 0),
-		orbitalRadius = 0,
-		orbitalSpeed = 0
+		orbitalRadius = 0, // New: Distance from the sun
+		orbitalSpeed = 0 // New: Speed of orbit around the sun
 	) {
 		this.radius = radius;
 		this.mesh = new THREE.Mesh(
 			new THREE.SphereGeometry(radius, 64, 64),
-			new THREE.MeshStandardMaterial({ color: color })
+			new THREE.ShaderMaterial({
+				uniforms: shader.uniforms,
+				vertexShader: shader.vertexShader,
+				fragmentShader: shader.fragmentShader
+			})
 		);
 		this.mesh.position.copy(centerPosition);
-		this.mesh.castShadow = true;
-		this.mesh.receiveShadow = true;
 		this.points = [];
 		this.rotationSpeed = Math.random() * 0.0001 + 0.001;
 		this.rotationAxis = new THREE.Vector3(
@@ -245,10 +561,12 @@ class Planet {
 			1,
 			Math.random() * 0.4 - 0.2
 		).normalize();
-		this.orbitalRadius = orbitalRadius;
-		this.orbitalSpeed = orbitalSpeed;
-		this.orbitalAngle = Math.random() * Math.PI * 2;
+		// Orbital properties
+		this.orbitalRadius = orbitalRadius; // Distance from sun
+		this.orbitalSpeed = orbitalSpeed; // Angular speed in radians per frame
+		this.orbitalAngle = Math.random() * Math.PI * 2; // Random starting angle
 
+		// Generate POIs and attach as children
 		for (let i = 0; i < numPoints; i++) {
 			const theta = Math.random() * Math.PI * 2;
 			const phi = Math.acos(2 * Math.random() - 1);
@@ -261,41 +579,79 @@ class Planet {
 			const marker = new THREE.Sprite(
 				new THREE.SpriteMaterial({ color: 0x00ffff })
 			);
-			marker.position.copy(localPosition).add(normal.multiplyScalar(0.1));
+			marker.position.copy(localPosition).add(normal.multiplyScalar(0.1)); // Local offset
 			marker.scale.set(0.5, 0.5, 0.5);
-			this.mesh.add(marker);
+			this.mesh.add(marker); // Attach to mesh
 			this.points.push({ marker, localPosition });
 		}
 	}
 
 	addToScene(scene) {
-		scene.add(this.mesh);
+		scene.add(this.mesh); // Adding mesh automatically adds child POIs
 	}
 
 	getPoints() {
 		return this.points.map((p) => ({
 			marker: p.marker,
-			position: p.marker.getWorldPosition(new THREE.Vector3())
+			position: p.marker.getWorldPosition(new THREE.Vector3()) // World position for zooming
 		}));
 	}
 
+	// 	dynamic lerp to follow smoothly
 	zoomToPoint(point, controller) {
 		const distanceAbove = 5;
 		controller.previousPosition = controller.camera.position.clone();
 		controller.originalQuaternion = controller.camera.quaternion.clone();
 		controller.targetPoint = point;
+		controller.targetOrbitalSpeed = this.orbitalSpeed;
 	}
+
+	// Skip first animation version
+	// 	zoomToPoint(point, controller) {
+	// 		const distanceAbove = 5;
+	// 		controller.previousPosition = controller.camera.position.clone();
+	// 		controller.originalQuaternion = controller.camera.quaternion.clone();
+
+	// 		// Skip initial animation, set targetPoint directly
+	// 		controller.targetPoint = point;
+	// 	}
+
+	// 	zoomToPoint(point, controller) {
+	// 		const minDistance = 3;
+	// 		controller.previousPosition = controller.camera.position.clone();
+	// 		controller.originalQuaternion = controller.camera.quaternion.clone();
+
+	// 		const worldPosition = point.marker.getWorldPosition(new THREE.Vector3());
+	// 		const direction = new THREE.Vector3()
+	// 			.subVectors(controller.camera.position, worldPosition)
+	// 			.normalize();
+	// 		controller.targetPosition = worldPosition
+	// 			.clone()
+	// 			.add(direction.multiplyScalar(minDistance));
+	// 		const tempCam = new THREE.PerspectiveCamera();
+	// 		tempCam.position.copy(controller.targetPosition);
+	// 		tempCam.lookAt(worldPosition);
+	// 		controller.targetQuaternion = tempCam.quaternion.clone();
+
+	// 		// Set the POI to follow after animation completes
+	// 		controller.targetPoint = point;
+	// 	}
 
 	zoomOut(controller) {
 		controller.resetZoom();
 	}
 
 	update() {
+		// Self-rotation
 		this.mesh.rotateOnAxis(this.rotationAxis, this.rotationSpeed);
+
+		// Orbital motion around (0, 0, 0)
 		if (this.orbitalRadius > 0) {
+			// Only orbit if not the sun
 			this.orbitalAngle += this.orbitalSpeed;
 			this.mesh.position.x = Math.cos(this.orbitalAngle) * this.orbitalRadius;
 			this.mesh.position.z = Math.sin(this.orbitalAngle) * this.orbitalRadius;
+			// Keep y = 0 for simplicity (2D orbits); adjust if you want 3D orbits
 		}
 	}
 }
@@ -303,106 +659,90 @@ class Planet {
 // Instantiate objects
 const cameraController = new CameraController(camera);
 
-const planets = [
-	(function () {
-		const sunPlanet = new Planet(
-			15,
-			new THREE.Vector3(0, 0, 0),
-			0,
-			0xffff00,
-			0.001,
-			new THREE.Vector3(0, 1, 0),
-			0,
-			0
-		);
-		const sunLight = new THREE.DirectionalLight(0xffffff, 3);
-		sunLight.position.set(0, 0, -50);
-		sunLight.target.position.set(0, 0, 1); // Direction toward positive z
-		sunLight.castShadow = true;
-		sunLight.shadow.mapSize.width = 1024;
-		sunLight.shadow.mapSize.height = 1024;
-		sunLight.shadow.camera.near = 0.1;
-		sunLight.shadow.camera.far = 400;
-		sunLight.shadow.camera.left = -400;
-		sunLight.shadow.camera.right = 400;
-		sunLight.shadow.camera.top = 100;
-		sunLight.shadow.camera.bottom = -100;
-		scene.add(sunLight);
-		scene.add(sunLight.target);
+const rotationModifier = 2;
 
-		const helper = new THREE.CameraHelper(sunLight.shadow.camera);
-		scene.add(helper);
-		return sunPlanet;
-	})(),
+const planets = [
+	// Sun (no orbit, at center)
+	new Planet(
+		15, // Larger radius for sun
+		new THREE.Vector3(0, 0, 0), // Center of system
+		0, // No POIs for simplicity (or add if desired)
+		sunLikePlanetShader, // Bright, sun-like shader
+		0.001,
+		new THREE.Vector3(0, 1, 0),
+		0, // Orbital radius = 0 (stationary)
+		0 // Orbital speed = 0
+	),
+	// Orbiting planets
 	new Planet(
 		8,
-		new THREE.Vector3(25, 0, 0),
+		new THREE.Vector3(25, 0, 0), // Initial position (will be overridden by orbit)
 		3,
-		0x00ff00,
+		gasPlanetShader,
 		0.002,
 		new THREE.Vector3(0, 1, 0),
-		55,
-		0.0001
+		55, // Orbital radius
+		0.0001 / rotationModifier
 	),
 	new Planet(
 		10,
 		new THREE.Vector3(35, 0, 0),
 		5,
-		0x0000ff,
+		earthLikePlanetShader,
 		0.00015,
 		new THREE.Vector3(0, 1, 0.1),
 		135,
-		0.0008
+		0.0008 / rotationModifier
 	),
 	new Planet(
 		8,
 		new THREE.Vector3(45, 0, 0),
 		4,
-		0xff0000,
+		marsLikePlanetShader,
 		0.0008,
 		new THREE.Vector3(0.1, 1, 0),
 		85,
-		0.0006
+		0.0006 / rotationModifier
 	),
 	new Planet(
 		12,
 		new THREE.Vector3(55, 0, 0),
 		6,
-		0xffa500,
+		saturnLikePlanetShader,
 		0.0012,
 		new THREE.Vector3(0, 1, 0),
 		165,
-		0.0005
+		0.0005 / rotationModifier
 	),
 	new Planet(
 		7,
 		new THREE.Vector3(65, 0, 0),
 		3,
-		0x800080,
+		icyPlanetShader,
 		0.0025,
 		new THREE.Vector3(0, 1, -0.1),
 		225,
-		0.0004
+		0.0004 / rotationModifier
 	),
 	new Planet(
 		15,
 		new THREE.Vector3(75, 0, 0),
 		7,
-		0x00ffff,
+		gasGiantPlanetShader,
 		0.001,
 		new THREE.Vector3(0.2, 1, 0),
 		300,
-		0.0003
+		0.0003 / rotationModifier
 	),
 	new Planet(
 		9,
 		new THREE.Vector3(85, 0, 0),
 		4,
-		0xff00ff,
+		volcanicPlanetShader,
 		0.0018,
 		new THREE.Vector3(0, 1, 0.2),
 		400,
-		0.0001
+		0.0001 / rotationModifier
 	)
 ];
 
@@ -451,10 +791,6 @@ function onMouseClick(event) {
 
 window.addEventListener("mousedown", onMouseClick);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 1);
-scene.add(ambientLight);
-
 // Animation loop
 function animate() {
 	requestAnimationFrame(animate);
@@ -464,6 +800,11 @@ function animate() {
 	stars.rotation.y += 0.0001;
 }
 animate();
+
+// Lighting
+// const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+// directionalLight.position.set(10, 10, 10);
+// scene.add(directionalLight);
 
 // Resize handler
 window.addEventListener("resize", () => {
