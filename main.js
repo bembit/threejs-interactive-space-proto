@@ -293,6 +293,7 @@ class CameraController {
 	}
 
 	onWheel(event) {
+		if (this.targetPosition || this.targetQuaternion || this.targetPoint) return; // Lock during animations or tracking
 		const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
 			this.camera.quaternion
 		);
@@ -381,24 +382,23 @@ class CameraController {
 		}
 	}
 
+	// Skip first animation version
 	update() {
 		if (this.targetPosition || this.targetQuaternion) {
 			this.animateCamera();
 		} else if (this.targetPoint) {
-			// Follow the POI from a top-down view
 			const worldPosition = this.targetPoint.marker.getWorldPosition(
 				new THREE.Vector3()
 			);
-			const planetCenter = this.targetPoint.marker.parent.position; // Planet's center
-			const normal = worldPosition.clone().sub(planetCenter).normalize(); // Surface normal
+			const planetCenter = this.targetPoint.marker.parent.position;
+			const normal = worldPosition.clone().sub(planetCenter).normalize();
 
-			// Position camera above the POI along the normal
-			const distanceAbove = 5; // Adjust this for height above the surface
+			const distanceAbove = 5;
 			const targetPosition = worldPosition
 				.clone()
 				.add(normal.multiplyScalar(distanceAbove));
-			this.camera.position.lerp(targetPosition, 0.05); // Smoothly follow
-			this.camera.lookAt(worldPosition); // Look down at the POI
+			this.camera.position.lerp(targetPosition, 0.01); // Adjust this for speed (was 0.05)
+			this.camera.lookAt(worldPosition);
 			this.zoomMessage.style.display = "block";
 		} else {
 			const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
@@ -415,6 +415,41 @@ class CameraController {
 			this.zoomMessage.style.display = "none";
 		}
 	}
+
+	// 	update() {
+	// 		if (this.targetPosition || this.targetQuaternion) {
+	// 			this.animateCamera();
+	// 		} else if (this.targetPoint) {
+	// 			// Follow the POI from a top-down view
+	// 			const worldPosition = this.targetPoint.marker.getWorldPosition(
+	// 				new THREE.Vector3()
+	// 			);
+	// 			const planetCenter = this.targetPoint.marker.parent.position; // Planet's center
+	// 			const normal = worldPosition.clone().sub(planetCenter).normalize(); // Surface normal
+
+	// 			// Position camera above the POI along the normal
+	// 			const distanceAbove = 5; // Adjust this for height above the surface
+	// 			const targetPosition = worldPosition
+	// 				.clone()
+	// 				.add(normal.multiplyScalar(distanceAbove));
+	// 			this.camera.position.lerp(targetPosition, 0.05); // Smoothly follow
+	// 			this.camera.lookAt(worldPosition); // Look down at the POI
+	// 			this.zoomMessage.style.display = "block";
+	// 		} else {
+	// 			const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+	// 				this.camera.quaternion
+	// 			);
+	// 			this.camera.position.add(forward.multiplyScalar(this.velocity.z));
+	// 			this.camera.position.add(right.multiplyScalar(this.velocity.x));
+	// 			this.camera.position.add(
+	// 				new THREE.Vector3(0, 1, 0).multiplyScalar(this.velocity.y)
+	// 			);
+	// 			this.zoomMessage.style.display = "none";
+	// 		}
+	// 	}
 
 	resetZoom() {
 		if (this.previousPosition && this.originalQuaternion) {
@@ -433,7 +468,9 @@ class Planet {
 		numPoints,
 		shader,
 		rotationSpeed = 0.001,
-		rotationAxis = new THREE.Vector3(0, 1, 0)
+		rotationAxis = new THREE.Vector3(0, 1, 0),
+		orbitalRadius = 0, // New: Distance from the sun
+		orbitalSpeed = 0 // New: Speed of orbit around the sun
 	) {
 		this.radius = radius;
 		this.mesh = new THREE.Mesh(
@@ -446,12 +483,16 @@ class Planet {
 		);
 		this.mesh.position.copy(centerPosition);
 		this.points = [];
-		this.rotationSpeed = Math.random() * 0.00001 + 0.0001;
+		this.rotationSpeed = Math.random() * 0.0001 + 0.001;
 		this.rotationAxis = new THREE.Vector3(
 			Math.random() * 0.4 - 0.2,
 			1,
 			Math.random() * 0.4 - 0.2
 		).normalize();
+		// Orbital properties
+		this.orbitalRadius = orbitalRadius; // Distance from sun
+		this.orbitalSpeed = orbitalSpeed; // Angular speed in radians per frame
+		this.orbitalAngle = Math.random() * Math.PI * 2; // Random starting angle
 
 		// Generate POIs and attach as children
 		for (let i = 0; i < numPoints; i++) {
@@ -484,103 +525,208 @@ class Planet {
 		}));
 	}
 
+	// Skip first animation version
 	zoomToPoint(point, controller) {
-		const minDistance = 3;
+		const distanceAbove = 5;
 		controller.previousPosition = controller.camera.position.clone();
 		controller.originalQuaternion = controller.camera.quaternion.clone();
 
-		const worldPosition = point.marker.getWorldPosition(new THREE.Vector3());
-		const direction = new THREE.Vector3()
-			.subVectors(controller.camera.position, worldPosition)
-			.normalize();
-		controller.targetPosition = worldPosition
-			.clone()
-			.add(direction.multiplyScalar(minDistance));
-		const tempCam = new THREE.PerspectiveCamera();
-		tempCam.position.copy(controller.targetPosition);
-		tempCam.lookAt(worldPosition);
-		controller.targetQuaternion = tempCam.quaternion.clone();
-
-		// Set the POI to follow after animation completes
+		// Skip initial animation, set targetPoint directly
 		controller.targetPoint = point;
 	}
+
+	// 	zoomToPoint(point, controller) {
+	// 		const minDistance = 3;
+	// 		controller.previousPosition = controller.camera.position.clone();
+	// 		controller.originalQuaternion = controller.camera.quaternion.clone();
+
+	// 		const worldPosition = point.marker.getWorldPosition(new THREE.Vector3());
+	// 		const direction = new THREE.Vector3()
+	// 			.subVectors(controller.camera.position, worldPosition)
+	// 			.normalize();
+	// 		controller.targetPosition = worldPosition
+	// 			.clone()
+	// 			.add(direction.multiplyScalar(minDistance));
+	// 		const tempCam = new THREE.PerspectiveCamera();
+	// 		tempCam.position.copy(controller.targetPosition);
+	// 		tempCam.lookAt(worldPosition);
+	// 		controller.targetQuaternion = tempCam.quaternion.clone();
+
+	// 		// Set the POI to follow after animation completes
+	// 		controller.targetPoint = point;
+	// 	}
 
 	zoomOut(controller) {
 		controller.resetZoom();
 	}
 
 	update() {
+		// Self-rotation
 		this.mesh.rotateOnAxis(this.rotationAxis, this.rotationSpeed);
+
+		// Orbital motion around (0, 0, 0)
+		if (this.orbitalRadius > 0) {
+			// Only orbit if not the sun
+			this.orbitalAngle += this.orbitalSpeed;
+			this.mesh.position.x = Math.cos(this.orbitalAngle) * this.orbitalRadius;
+			this.mesh.position.z = Math.sin(this.orbitalAngle) * this.orbitalRadius;
+			// Keep y = 0 for simplicity (2D orbits); adjust if you want 3D orbits
+		}
 	}
 }
 
 // Instantiate objects
 const cameraController = new CameraController(camera);
 
+// const planets = [
+// 	new Planet(
+// 		10,
+// 		new THREE.Vector3(0, 0, 0),
+// 		5,
+// 		icyPlanetShader,
+// 		0.001,
+// 		new THREE.Vector3(0, 1, 0)
+// 	),
+// 	new Planet(
+// 		8,
+// 		new THREE.Vector3(25, 15, 0),
+// 		3,
+// 		gasPlanetShader,
+// 		0.002,
+// 		new THREE.Vector3(0, 1, 0)
+// 	),
+// 	new Planet(
+// 		10,
+// 		new THREE.Vector3(-30, -20, 0),
+// 		5,
+// 		earthLikePlanetShader,
+// 		0.0015,
+// 		new THREE.Vector3(0, 1, 0.1)
+// 	),
+// 	new Planet(
+// 		8,
+// 		new THREE.Vector3(-15, 20, 0),
+// 		4,
+// 		marsLikePlanetShader,
+// 		0.0008,
+// 		new THREE.Vector3(0.1, 1, 0)
+// 	),
+// 	new Planet(
+// 		12,
+// 		new THREE.Vector3(40, 0, 0),
+// 		6,
+// 		saturnLikePlanetShader,
+// 		0.0012,
+// 		new THREE.Vector3(0, 1, 0)
+// 	),
+// 	new Planet(
+// 		7,
+// 		new THREE.Vector3(55, -15, -15),
+// 		3,
+// 		icyPlanetShader,
+// 		0.0025,
+// 		new THREE.Vector3(0, 1, -0.1)
+// 	),
+// 	new Planet(
+// 		15,
+// 		new THREE.Vector3(70, 0, 35),
+// 		7,
+// 		gasGiantPlanetShader,
+// 		0.001,
+// 		new THREE.Vector3(0.2, 1, 0)
+// 	),
+// 	new Planet(
+// 		9,
+// 		new THREE.Vector3(85, 15, 15),
+// 		4,
+// 		volcanicPlanetShader,
+// 		0.0018,
+// 		new THREE.Vector3(0, 1, 0.2)
+// 	)
+// ];
+
 const planets = [
+	// Sun (no orbit, at center)
 	new Planet(
-		10,
-		new THREE.Vector3(0, 0, 0),
-		5,
-		icyPlanetShader,
+		15, // Larger radius for sun
+		new THREE.Vector3(0, 0, 0), // Center of system
+		0, // No POIs for simplicity (or add if desired)
+		gasGiantPlanetShader, // Bright, sun-like shader
 		0.001,
-		new THREE.Vector3(0, 1, 0)
+		new THREE.Vector3(0, 1, 0),
+		0, // Orbital radius = 0 (stationary)
+		0 // Orbital speed = 0
 	),
+	// Orbiting planets
 	new Planet(
 		8,
-		new THREE.Vector3(25, 15, 0),
+		new THREE.Vector3(25, 0, 0), // Initial position (will be overridden by orbit)
 		3,
 		gasPlanetShader,
 		0.002,
-		new THREE.Vector3(0, 1, 0)
+		new THREE.Vector3(0, 1, 0),
+		55, // Orbital radius
+		0.0001 // Orbital speed
 	),
 	new Planet(
 		10,
-		new THREE.Vector3(-30, -20, 0),
+		new THREE.Vector3(35, 0, 0),
 		5,
 		earthLikePlanetShader,
-		0.0015,
-		new THREE.Vector3(0, 1, 0.1)
+		0.00015,
+		new THREE.Vector3(0, 1, 0.1),
+		135,
+		0.0008
 	),
 	new Planet(
 		8,
-		new THREE.Vector3(-15, 20, 0),
+		new THREE.Vector3(45, 0, 0),
 		4,
 		marsLikePlanetShader,
 		0.0008,
-		new THREE.Vector3(0.1, 1, 0)
+		new THREE.Vector3(0.1, 1, 0),
+		85,
+		0.0006
 	),
 	new Planet(
 		12,
-		new THREE.Vector3(40, 0, 0),
+		new THREE.Vector3(55, 0, 0),
 		6,
 		saturnLikePlanetShader,
 		0.0012,
-		new THREE.Vector3(0, 1, 0)
+		new THREE.Vector3(0, 1, 0),
+		165,
+		0.0005
 	),
 	new Planet(
 		7,
-		new THREE.Vector3(55, -15, -15),
+		new THREE.Vector3(65, 0, 0),
 		3,
 		icyPlanetShader,
 		0.0025,
-		new THREE.Vector3(0, 1, -0.1)
+		new THREE.Vector3(0, 1, -0.1),
+		225,
+		0.0004
 	),
 	new Planet(
 		15,
-		new THREE.Vector3(70, 0, 35),
+		new THREE.Vector3(75, 0, 0),
 		7,
 		gasGiantPlanetShader,
 		0.001,
-		new THREE.Vector3(0.2, 1, 0)
+		new THREE.Vector3(0.2, 1, 0),
+		300,
+		0.0003
 	),
 	new Planet(
 		9,
-		new THREE.Vector3(85, 15, 15),
+		new THREE.Vector3(85, 0, 0),
 		4,
 		volcanicPlanetShader,
 		0.0018,
-		new THREE.Vector3(0, 1, 0.2)
+		new THREE.Vector3(0, 1, 0.2),
+		400,
+		0.0001
 	)
 ];
 
