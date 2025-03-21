@@ -154,11 +154,11 @@ const saturnLikePlanetShader = {
 };
 
 const icyPlanetShader = {
-    uniforms: { 
-        time: { value: 0 },
-        uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
-    },
-    vertexShader: `
+	uniforms: {
+		time: { value: 0 },
+		uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
+	},
+	vertexShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vViewDir;
@@ -170,7 +170,7 @@ const icyPlanetShader = {
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
     `,
-    fragmentShader: `
+	fragmentShader: `
         uniform vec3 uLightDir;
         uniform float time;
         varying vec2 vUv;
@@ -356,7 +356,7 @@ const gasPlanetShader = {
     `
 };
 
-// since we store the prev position, we could store them all in an array and we could jump back and forward infinitely
+// since we store the prev position, we could store them all in an array and we could jump back and forward from points
 // CameraController
 class CameraController {
 	constructor(camera) {
@@ -368,7 +368,7 @@ class CameraController {
 		this.velocity = new THREE.Vector3();
 		this.targetPosition = null;
 		this.targetQuaternion = null;
-		this.targetPoint = null; // Track the POI to follow
+		this.targetPoint = null; // POI to follow
 		this.previousPosition = camera.position.clone();
 		this.originalQuaternion = camera.quaternion.clone();
 		this.zoomMessage = document.getElementById("zoomMessage");
@@ -625,7 +625,6 @@ class CameraController {
 	}
 }
 
-// Planet class (unchanged)
 class Planet {
 	constructor(
 		radius,
@@ -634,8 +633,8 @@ class Planet {
 		shader,
 		rotationSpeed = 0.001,
 		rotationAxis = new THREE.Vector3(0, 1, 0),
-		orbitalRadius = 0, // New: Distance from the sun
-		orbitalSpeed = 0 // New: Speed of orbit around the sun
+		orbitalRadius = 0, //Distance from the sun
+		orbitalSpeed = 0 // Speed of orbit around the sun
 	) {
 		this.radius = radius;
 		this.mesh = new THREE.Mesh(
@@ -690,7 +689,6 @@ class Planet {
 		}));
 	}
 
-	// 	dynamic lerp to follow smoothly
 	zoomToPoint(point, controller) {
 		const distanceAbove = 5;
 		controller.previousPosition = controller.camera.position.clone();
@@ -744,12 +742,11 @@ class Planet {
 			this.orbitalAngle += this.orbitalSpeed;
 			this.mesh.position.x = Math.cos(this.orbitalAngle) * this.orbitalRadius;
 			this.mesh.position.z = Math.sin(this.orbitalAngle) * this.orbitalRadius;
-			// Keep y = 0 for simplicity (2D orbits); adjust if you want 3D orbits
 		}
-		// Update light direction (sun at origin)
-		// const sunPosition = new THREE.Vector3(0, 0, 0);
-		// const lightDir = sunPosition.clone().sub(this.mesh.position).normalize();
-		// this.mesh.material.uniforms.uLightDir.value.copy(lightDir);
+		// Update light direction!
+		const sunPosition = new THREE.Vector3(0, 0, 0);
+		const lightDir = sunPosition.clone().sub(this.mesh.position).normalize();
+		this.mesh.material.uniforms.uLightDir.value.copy(lightDir);
 	}
 }
 
@@ -761,10 +758,10 @@ const rotationModifier = 2;
 const planets = [
 	// Sun (no orbit, at center)
 	new Planet(
-		15, // Larger radius for sun
+		15,
 		new THREE.Vector3(0, 0, 0), // Center of system
-		0, // No POIs for simplicity (or add if desired)
-		sunLikePlanetShader, // Bright, sun-like shader
+		0, // No POIs on sun
+		sunLikePlanetShader,
 		0.001,
 		new THREE.Vector3(0, 1, 0),
 		0, // Orbital radius = 0 (stationary)
@@ -893,7 +890,7 @@ function animate() {
 	requestAnimationFrame(animate);
 	planets.forEach((planet) => {
 		planet.update();
-		planet.mesh.material.uniforms.time.value += 0.01; // Increment time
+		planet.mesh.material.uniforms.time.value += 0.01;
 	});
 	cameraController.update();
 	renderer.render(scene, camera);
@@ -911,4 +908,9 @@ window.addEventListener("resize", () => {
 	renderer.setSize(window.innerWidth, window.innerHeight);
 	camera.aspect = window.innerWidth / window.innerHeight;
 	camera.updateProjectionMatrix();
+});
+
+const legend = document.getElementById("legend");
+document.addEventListener("click", () => {
+	legend.style.display = "block";
 });

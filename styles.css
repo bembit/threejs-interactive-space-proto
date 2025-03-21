@@ -1,3 +1,21 @@
+*,
+*::after,
+*::before {
+	margin: 0;
+	box-sizing: border-box;
+	padding: 0;
+}
+
+a,
+a:visited {
+	color: yellow;
+}
+
+body {
+	font-size: 1em;
+	font-family: monospace, system-ui;
+}
+
 canvas {
 	position: fixed;
 	top: 0;
@@ -16,8 +34,32 @@ canvas {
 	padding: 10px 20px;
 	border-radius: 5px;
 	font-size: 20px;
-	display: none; /* Hidden by default */
+	display: none;
 	z-index: 100;
+}
+
+#legend {
+	position: fixed;
+	bottom: 1%;
+	right: 1%;
+	/* 	transform: translate(-50%, -50%); */
+	background: rgba(255, 255, 255, 0.15);
+	color: white;
+	padding: 10px 20px;
+	border-radius: 5px;
+	z-index: 100;
+	display: none;
+	ul {
+		list-style: none;
+	}
+}
+
+span {
+	color: green;
+}
+
+ul li:first-of-type > span {
+	color: #00ffff;
 }
 
 #planet-info {
